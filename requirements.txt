@@ -13,3 +13,4 @@ openai==1.31.1
 tiktoken==0.7.0
 sentence_transformers==3.0.1
 flask_socketio
+nltk
