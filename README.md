@@ -56,3 +56,4 @@ python3 db_setup.py
 ```bash
 python3 app.py
 ```
+![demo](image.png)

@@ -1,78 +1,66 @@
-import os
-# from langchain_community.vectorstores import Chroma
-# from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-# from langchain.prompts import ChatPromptTemplate
-# from dotenv import load_dotenv
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from collections import Counter
+import re
+
+import nltk
 from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import TfidfVectorizer
-import openai
-
-# Load environment variables
-# load_dotenv()
-# openai.api_key = os.getenv('OPENAI_API_KEY')
-
-# CHROMA_PATH = "../chroma"  # Adjusted to point to the correct directory
-
-# PROMPT_TEMPLATE = """
-# As a wise and enlightened Buddhist master, provide a comprehensive and insightful interpretation of the following sutra-related question.
-# Ensure your explanation thoroughly reflects the provided context, without omitting any key details. 
-# If the context does not fully address the question, clearly indicate what is missing and provide a thoughtful explanation based on your deep understanding of Buddhist teachings.
-# Context (retrieved from the knowledge base):
-# {context}
-
-# ---
-# Question: {question}
-# Your Enlightened Response:
-# """
+import re
 
 def preprocess_query(query_text):
     """
-    Preprocess the query text to ensure it's optimized for similarity search.
+    Preprocess the query text to optimize it for similarity search.
+    This includes basic text cleaning and keyword extraction using TF-IDF.
     """
-    sentences = sent_tokenize(query_text)
-    if len(sentences) <= 1 and len(query_text.split()) <= 10:
-        return query_text
 
-    vectorizer = TfidfVectorizer(stop_words='english')
+    # Clean the query text (remove special characters and multiple spaces)
+    cleaned_query = re.sub(r'[^a-zA-Z\s]', '', query_text).strip()
+
+    # Tokenize the query into sentences
+    sentences = sent_tokenize(cleaned_query)
+
+    # If the query is short, return it as is to retain full information
+    if len(sentences) <= 1 and len(cleaned_query.split()) <= 10:
+        return cleaned_query
+
+    # Initialize the TF-IDF vectorizer with built-in stopword handling
+    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=0.1, ngram_range=(1, 2))
+
+    # Fit TF-IDF to the sentences and extract top features (keywords)
     X = vectorizer.fit_transform(sentences)
     keywords = vectorizer.get_feature_names_out()
 
+    # Combine keywords into a focused query
     focused_query = " ".join(keywords)
+
     return focused_query
 
-def search_with_fallback(db, query_text, top_k, initial_threshold=0.7, fallback_threshold=0.5):
+
+def search_with_fallback(db, query_text, logger, top_k=5, initial_threshold=0.5, fallback_threshold=0.3):
     """
-    Perform a similarity search with an initial threshold. If no results are found,
-    retry with a lower threshold.
+    Perform a similarity search with an initial threshold, and retry with a lower threshold if no results are found.
     """
-    results = db.similarity_search_with_relevance_scores(query_text, k=top_k)
-    if not results or results[0][1] < initial_threshold:
-        print(f"Unable to find matching results with a threshold of {initial_threshold}. Trying with a lower threshold...")
+    try:
+        # Perform the initial search
         results = db.similarity_search_with_relevance_scores(query_text, k=top_k)
-        if not results or results[0][1] < fallback_threshold:
-            print(f"Unable to find matching results even with a fallback threshold of {fallback_threshold}.")
-            return None
-    return results
+        logger.info(f"Initial search results: {results}")
 
-# def generate_response(query_text, threshold=0.7, top_k=5):
-#     """
-#     Main function to process the query and generate a response using the RAG approach.
-#     """
-#     embedding_function = OpenAIEmbeddings()
-#     db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+        if not results or results[0][1] < initial_threshold:
+            logger.warning(f"No results found with the initial threshold. Trying fallback search...")
+            # Retry with fallback threshold
+            results = db.similarity_search_with_relevance_scores(query_text, k=top_k, threshold=fallback_threshold)
+            logger.info(f"Fallback search results: {results}")
+        
+        if not results:
+            logger.warning(f"No results found with fallback threshold either.")
+        
+        return results
+    except Exception as e:
+        logger.error(f"Error during search: {e}")
+        return []
 
-#     processed_query = preprocess_query(query_text)
-
-#     results = search_with_fallback(db, processed_query, top_k, initial_threshold=threshold)
-#     if not results:
-#         return "No relevant information found."
-
-#     context_text = "\n\n---\n\n".join([doc.page_content for doc, _ in results])
-#     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-#     prompt = prompt_template.format(context=context_text, question=query_text)
-
-#     model = ChatOpenAI(model="gpt-4o-mini", max_retries=2)
-#     response_text = model.predict(prompt)
-
-#     sources = [doc.metadata.get("source", None) for doc, _ in results]
-#     return f"Response: {response_text}\nSources: {sources}"
