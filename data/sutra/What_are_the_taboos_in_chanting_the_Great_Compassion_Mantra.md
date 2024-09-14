@@ -1,0 +1,3 @@
+The Cundi Mantra can be chanted regardless of whether you are a monk or a layperson, and whether you drink alcohol or eat meat. What are the taboos for chanting the Great Compassion Mantra?
+The Master replied:
+Channing the mantra while drinking alcohol and eating meat is not effective, and is a sign of impurity. The biggest taboo for chanting the Great Coompassion Mantra and all mantras is to have delusions.
