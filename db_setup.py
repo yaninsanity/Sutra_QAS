@@ -7,22 +7,16 @@ from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 import openai
-import nltk
-from sentence_transformers import SentenceTransformer, util
 
 # Load environment variables
 load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# Set environment variables to handle warnings
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-
 # Constants
 CHROMA_PATH = "chroma"  # Path to store the Chroma DB
 DATA_PATH = "data/sutra"  # Path where sutra documents are stored
-MODEL_NAME = 'paraphrase-MiniLM-L6-v2'  # Sentence Transformer model for chunking
-MAX_CHUNK_SIZE = 400  # Maximum chunk size in characters
-CHUNK_OVERLAP = 50  # Overlap to maintain context continuity
+MAX_CHUNK_SIZE = 1000  # Max chunk size in tokens (or characters for flexibility)
+CHUNK_OVERLAP = 200  # Overlap in tokens to maintain context continuity
 
 def main():
     generate_data_store()
@@ -48,19 +42,18 @@ def load_documents():
 
 def split_document_into_chunks(documents: list, max_chunk_size=MAX_CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     """
-    Splits documents into semantically coherent chunks using a sentence transformer model.
+    Uses RecursiveCharacterTextSplitter to split documents into chunks with token overlap.
     """
-    # Initialize sentence transformer model for chunking
-    model = SentenceTransformer(MODEL_NAME)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=max_chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,  # Customize the length function based on token size
+    )
     chunked_documents = []
 
     for document in documents:
         try:
-            # Tokenize document into sentences using NLTK
-            sentences = nltk.sent_tokenize(document.page_content)
-            # Create semantic chunks
-            chunks = create_semantic_chunks(sentences, model, max_chunk_size, chunk_overlap)
-            
+            chunks = text_splitter.split_text(document.page_content)
             for i, chunk in enumerate(chunks):
                 chunk_metadata = document.metadata.copy()
                 chunk_metadata['chunk_index'] = i
@@ -71,35 +64,6 @@ def split_document_into_chunks(documents: list, max_chunk_size=MAX_CHUNK_SIZE, c
 
     print(f"Split {len(documents)} documents into {len(chunked_documents)} chunks.")
     return chunked_documents
-
-def create_semantic_chunks(sentences, model, max_chunk_size=MAX_CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
-    """
-    Creates semantically coherent chunks from sentences.
-    """
-    sentence_embeddings = model.encode(sentences)
-    chunks = []
-    current_chunk = []
-    current_chunk_size = 0
-
-    for sentence in sentences:
-        sentence_len = len(sentence)
-
-        # Create a new chunk if the current chunk size exceeds the max_chunk_size
-        if current_chunk and (current_chunk_size + sentence_len > max_chunk_size):
-            chunks.append(" ".join(current_chunk))
-            # Use chunk_overlap to maintain context between chunks
-            overlap_sentences = current_chunk[-min(len(current_chunk), chunk_overlap):]
-            current_chunk = overlap_sentences + [sentence]
-            current_chunk_size = sum(len(s) for s in overlap_sentences) + sentence_len
-        else:
-            current_chunk.append(sentence)
-            current_chunk_size += sentence_len
-
-    # Append the last chunk
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-
-    return chunks
 
 def save_to_chroma(chunks: list[Document]):
     """
